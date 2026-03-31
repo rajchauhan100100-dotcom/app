@@ -7,7 +7,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { Loader2, Sparkles } from 'lucide-react';
+import { Loader2, Sparkles, AlertCircle } from 'lucide-react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 
 export default function BioGenerator() {
   const [formData, setFormData] = useState({
@@ -29,19 +30,43 @@ export default function BioGenerator() {
     setBio('');
 
     try {
-      const response = await fetch('/api/generate-bio', {
+      const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+      
+      if (!apiKey || apiKey === 'your_gemini_api_key_here') {
+        throw new Error('Gemini API key not configured. Please add NEXT_PUBLIC_GEMINI_API_KEY to your .env file.');
+      }
+
+      const prompt = `Generate a professional bio for:
+Name: ${formData.name}
+Profession: ${formData.profession}
+${formData.experience ? `Experience: ${formData.experience}` : ''}
+${formData.skills ? `Skills: ${formData.skills}` : ''}
+${formData.achievements ? `Achievements: ${formData.achievements}` : ''}
+
+Write a concise, professional bio (2-3 sentences) suitable for LinkedIn or a resume.`;
+
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ details: formData })
+        body: JSON.stringify({
+          contents: [{
+            parts: [{ text: prompt }]
+          }]
+        })
       });
 
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to generate bio');
+        throw new Error(data.error?.message || 'Failed to generate bio');
       }
 
-      setBio(data.bio);
+      const result = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!result) {
+        throw new Error('No bio generated');
+      }
+
+      setBio(result);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -98,6 +123,7 @@ export default function BioGenerator() {
                 value={formData.achievements}
                 onChange={(e) => setFormData({ ...formData, achievements: e.target.value })}
                 className="min-h-[100px]"
+                maxLength={500}
               />
             </div>
           </div>
@@ -121,11 +147,10 @@ export default function BioGenerator() {
         </Card>
 
         {error && (
-          <Card className="border-destructive">
-            <CardContent className="pt-6">
-              <p className="text-destructive">{error}</p>
-            </CardContent>
-          </Card>
+          <Alert variant="destructive">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
         )}
 
         {bio && (
